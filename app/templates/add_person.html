@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Add New Person</title>
+    <link rel="stylesheet" href="static/css/style.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://kit.fontawesome.com/0a9399b7ee.js" crossorigin="anonymous"></script>
+    <style>
+        body {
+            padding-bottom: 20px;
+        }
+        .image-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 1rem;
+            padding: 1rem 0;
+            max-height: 350px; 
+        }
+        .image-card {
+            position: relative;
+            text-align: center;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #fff;
+            transition: transform 0.2s;
+            cursor: pointer;
+        }
+        .image-card:hover {
+            transform: scale(1.05);
+        }
+        .image-card img {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+            margin-bottom: 5px;
+        }
+        .image-card .form-check {
+            padding: 0.5rem;
+        }
+        .image-card .btn {
+            position: absolute;
+            bottom: 5px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 30%;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .image-card:hover .btn {
+            opacity: 1;
+        }
+        .scroll-container {
+            max-height: 350px;
+            overflow-y: auto;
+            border: none;
+            padding: 0;
+            background: transparent;
+        }
+        .main-image {
+            border: 3px solid #28a745; 
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mt-5">Add Person</h1>
+        <form method="POST" action="{{ url_for('person.add_person') }}" enctype="multipart/form-data" id="addPersonForm">
+            <!-- Name -->
+            <div class="mb-3">
+                <label class="form-label">Name</label>
+                <input type="text" class="form-control" id="name" name="name" required>
+            </div>
+            <!-- Title -->
+            <div class="mb-3">
+                <label class="form-label">Title</label>
+                <input type="text" class="form-control" id="title" name="title" required>
+            </div>
+            <!-- Image Upload -->
+            <div class="mb-3">
+                <label class="form-label">Images (PNG, JPG, JPEG)</label>
+                <input type="file" class="form-control" name="images" id="imageInput" accept=".png,.jpg,.jpeg" multiple>
+                <small class="text-muted">You can select multiple files at once</small>
+            </div>
+            <!-- Camera Capture Button -->
+            <div class="mb-3">
+                <button type="button" class="btn btn-primary" id="capturePhotos">Capture 50 Photos</button>
+            </div>
+            <!-- Image Previews -->
+            <h4 class="mt-4">Image Previews</h4>
+            <div class="scroll-container">
+                <div class="image-grid" id="imageContainer">
+                    <!-- JavaScript will populate previews here -->
+                </div>
+            </div>
+            <!-- Hidden inputs for main image index and temporary folder -->
+            <input type="hidden" name="main_image_index" id="mainImageIndex" value="">
+            <input type="hidden" name="temp_folder" id="tempFolderInput" value="">
+            <!-- Buttons -->
+            <div class="mt-4">
+                <button type="submit" class="btn btn-success">Add Person</button>
+                <a href="{{ url_for('main.index') }}" class="btn btn-secondary" id="cancelButton" data-index-url="{{ url_for('main.index') }}">Cancel</a>
+            </div>
+        </form>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const fileInput = document.getElementById('imageInput');
+            const imageContainer = document.getElementById('imageContainer');
+            const mainImageIndexInput = document.getElementById('mainImageIndex');
+            const tempFolderInput = document.getElementById('tempFolderInput');
+            const nameInput = document.getElementById('name');
+            const captureButton = document.getElementById('capturePhotos');
+            const cancelButton = document.getElementById('cancelButton');
+            const form = document.getElementById('addPersonForm');
+            let imageFiles = [];
+            let mainImageIndex = null;
+            let tempFolder = null;
+
+            // Generate a unique session ID
+            const sessionId = Math.random().toString(36).substring(2, 15);
+
+            // Function to create temporary folder
+            async function createFolder() {
+                if (!nameInput.value.trim()) {
+                    alert('Please enter a name before uploading or capturing photos.');
+                    return false;
+                }
+                tempFolder = `dataset/temp_${sessionId}`;
+                try {
+                    const response = await fetch('/create_folder', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ folder_name: tempFolder })
+                    });
+                    const result = await response.json();
+                    if (result.status === 'success') {
+                        tempFolderInput.value = tempFolder;
+                        return true;
+                    } else {
+                        console.error('Failed to create folder:', result.message);
+                        alert('Failed to create temporary folder.');
+                        return false;
+                    }
+                } catch (error) {
+                    console.error('Error creating folder:', error);
+                    alert('Error creating temporary folder.');
+                    return false;
+                }
+            }
+
+            // Function to clean up temporary folder
+            async function cleanupTempFolder() {
+                if (tempFolder) {
+                    try {
+                        await fetch('/cleanup_temp', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ folder: tempFolder })
+                        });
+                    } catch (error) {
+                        console.error('Error cleaning up temporary folder:', error);
+                    }
+                }
+            }
+
+            // Function to update the file input's FileList
+            function updateFileInput() {
+                const dataTransfer = new DataTransfer();
+                imageFiles.forEach(file => {
+                    if (file !== null) dataTransfer.items.add(file);
+                });
+                fileInput.files = dataTransfer.files;
+            }
+
+            // Function to update main image styling
+            function updateMainImageStyle(index) {
+                const cards = imageContainer.querySelectorAll('.image-card');
+                cards.forEach(card => {
+                    const cardIndex = parseInt(card.id.split('-')[1]);
+                    const img = card.querySelector('img');
+                    if (cardIndex === index) {
+                        img.classList.add('main-image');
+                    } else {
+                        img.classList.remove('main-image');
+                    }
+                });
+            }
+
+            // Function to add image to preview
+            function addImageToPreview(file, index) {
+                if (file.type.match('image.*')) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const div = document.createElement('div');
+                        div.className = 'image-card';
+                        div.id = `image-${index}`;
+                        div.innerHTML = `
+                            <img src="${e.target.result}" class="img-thumbnail" onclick="selectMainImage(${index})">
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="radio" name="main_image" value="${index}"
+                                       ${index === 0 && mainImageIndex === null ? 'checked' : ''}>
+                            </div>
+                            <button type="button" class="btn btn-danger btn-sm delete-image"
+                                    data-image-index="${index}"><i class="fa-solid fa-trash"></i></button>
+                        `;
+                        imageContainer.appendChild(div);
+                        if (index === 0 && mainImageIndex === null) {
+                            mainImageIndex = 0;
+                            mainImageIndexInput.value = mainImageIndex;
+                            updateMainImageStyle(0);
+                        }
+                    };
+                    reader.readAsDataURL(file);
+                }
+            }
+
+            // Handle file input change (append new files and save to temp folder)
+            fileInput.addEventListener('change', async function(event) {
+                if (!nameInput.value.trim()) {
+                    alert('Please enter a name before uploading photos.');
+                    return;
+                }
+                if (!tempFolder && !(await createFolder())) {
+                    return;
+                }
+                const newFiles = Array.from(event.target.files);
+                for (const file of newFiles) {
+                    if (file && file.type.match('image.*')) {
+                        const formData = new FormData();
+                        formData.append('image', file);
+                        formData.append('folder', tempFolder);
+                        try {
+                            const response = await fetch('/save_photo', {
+                                method: 'POST',
+                                body: formData
+                            });
+                            const result = await response.json();
+                            if (result.status !== 'success') {
+                                console.error('Failed to save photo:', result.message);
+                            }
+                        } catch (error) {
+                            console.error('Error saving photo:', error);
+                        }
+                        imageFiles.push(file);
+                        const index = imageFiles.length - 1;
+                        addImageToPreview(file, index);
+                    }
+                }
+                updateFileInput();
+            });
+
+            // Update main image selection when clicking the image
+            window.selectMainImage = function(index) {
+                mainImageIndex = index;
+                mainImageIndexInput.value = mainImageIndex;
+                const radios = imageContainer.querySelectorAll('input[name="main_image"]');
+                radios.forEach(radio => {
+                    radio.checked = (parseInt(radio.value) === index);
+                });
+                updateMainImageStyle(index);
+            };
+
+            // Handle image deletion
+            imageContainer.addEventListener('click', function(event) {
+                if (event.target.classList.contains('delete-image')) {
+                    const index = parseInt(event.target.getAttribute('data-image-index'));
+                    const div = document.getElementById(`image-${index}`);
+                    div.remove();
+                    imageFiles[index] = null;
+                    updateFileInput();
+                    if (mainImageIndex === index) {
+                        const remainingImages = imageFiles.filter(file => file !== null);
+                        if (remainingImages.length > 0) {
+                            const firstValidIndex = imageFiles.findIndex(file => file !== null);
+                            mainImageIndex = firstValidIndex;
+                            mainImageIndexInput.value = firstValidIndex;
+                            const firstRadio = imageContainer.querySelector(`input[value="${firstValidIndex}"]`);
+                            if (firstRadio) firstRadio.checked = true;
+                            selectMainImage(firstValidIndex);
+                        } else {
+                            mainImageIndex = null;
+                            mainImageIndexInput.value = '';
+                        }
+                    }
+                    updateMainImageStyle(mainImageIndex);
+                }
+            });
+
+            // Handle photo capture in new tab
+            captureButton.addEventListener('click', async function() {
+                if (!nameInput.value.trim()) {
+                    alert('Please enter a name before capturing photos.');
+                    return;
+                }
+                if (!tempFolder && !(await createFolder())) {
+                    return;
+                }
+                const width = 800;
+                const height = 800;
+                const left = (screen.width - width) / 2;
+                const top = (screen.height - height) / 2;
+                const captureWindow = window.open(
+                    '/capture_photos?name=' + encodeURIComponent(nameInput.value) + '&temp_folder=' + encodeURIComponent(tempFolder),
+                    'CapturePhotos',
+                    `width=${width},height=${height},top=${top},left=${left}`
+                );
+                if (!captureWindow) {
+                    alert('Failed to open capture window. Please allow pop-ups.');
+                    return;
+                }
+                window.addEventListener('message', function(event) {
+                    if (event.data.type === 'photoCaptured') {
+                        const { dataUrl, photoCount } = event.data;
+                        const blob = dataURLtoBlob(dataUrl);
+                        const file = new File([blob], `photo_${photoCount}.jpg`, { type: 'image/jpeg' });
+                        imageFiles.push(file);
+                        const index = imageFiles.length - 1;
+                        addImageToPreview(file, index);
+                        updateFileInput();
+                    }
+                });
+                function dataURLtoBlob(dataUrl) {
+                    const arr = dataUrl.split(',');
+                    const mime = arr[0].match(/:(.*?);/)[1];
+                    const bstr = atob(arr[1]);
+                    let n = bstr.length;
+                    const u8arr = new Uint8Array(n);
+                    while (n--) {
+                        u8arr[n] = bstr.charCodeAt(n);
+                    }
+                    return new Blob([u8arr], { type: mime });
+                }
+            });
+
+            // Handle form submission validation
+            form.addEventListener('submit', function(event) {
+                const validImages = imageFiles.filter(file => file !== null);
+                if (validImages.length === 0) {
+                    event.preventDefault();
+                    alert('Please upload or capture at least one image before adding a person.');
+                }
+            });
+
+            // Handle cancel button
+            cancelButton.addEventListener('click', async function(event) {
+                event.preventDefault();
+                await cleanupTempFolder();
+                const indexUrl = cancelButton.getAttribute('data-index-url') || '/';
+                window.location.href = indexUrl;
+            });
+
+            // Cleanup on page unload
+            window.addEventListener('beforeunload', async function() {
+                if (tempFolder) {
+                    await cleanupTempFolder();
+                }
+            });
+        });
+    </script>
+</body>
+</html>

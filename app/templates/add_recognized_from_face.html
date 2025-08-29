@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Add Recognized Person</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .table-img {
+            width: 120px;
+            height: 120px;
+            object-fit: cover;
+            border: 1px solid #ddd;
+            padding: 5px;
+            border-radius: 5px;
+        }
+        .error {
+            color: #dc3545;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mt-5">Add Recognized Person</h1>
+        
+        <p>Captured Face:</p>
+        <img src="{{ url_for('face.serve_image', id=face.id) }}" class="table-img mb-3" alt="Captured Face">
+
+        <form method="POST" enctype="multipart/form-data" id="addPersonForm" novalidate>
+            <input type="hidden" name="action" id="actionInput">
+            <div class="mb-3">
+                <label class="form-label">Action</label>
+                <div class="form-check">
+                    <input type="radio" class="form-check-input" name="actionRadio" value="new" id="newPerson" checked>
+                    <label class="form-check-label" for="newPerson">Create New Person</label>
+                </div>
+                <div class="form-check">
+                    <input type="radio" class="form-check-input" name="actionRadio" value="existing" id="existingPerson">
+                    <label class="form-check-label" for="existingPerson">Add to Existing Person</label>
+                </div>
+                <div id="selectionError" class="error">Please select a person or provide a name.</div>
+            </div>
+
+            <div class="mb-3" id="newPersonFields">
+                <label class="form-label">Name</label>
+                <input type="text" class="form-control" name="name" placeholder="Enter name" required>
+                <label class="form-label">Title</label>
+                <input type="text" class="form-control" name="title" placeholder="Enter title">
+            </div>
+
+            <div class="mb-3" id="existingPersonFields" style="display: none;">
+                <label class="form-label">Select Existing Person</label>
+                <select class="form-select" name="existing_person_id" id="existingPersonSelect" required>
+                    <option value="">-- Select a Person --</option>
+                    {% for person in recognized_people %}
+                    <option value="{{ person.id }}">{{ person.name }} (ID: {{ person.id }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <button type="submit" class="btn btn-success">Add Person</button>
+            <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Cancel</a>
+        </form>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const actionRadios = document.querySelectorAll('input[name="actionRadio"]');
+            const newPersonFields = document.getElementById('newPersonFields');
+            const existingPersonFields = document.getElementById('existingPersonFields');
+            const actionInput = document.getElementById('actionInput');
+            const existingPersonSelect = document.getElementById('existingPersonSelect');
+            const selectionError = document.getElementById('selectionError');
+            const form = document.getElementById('addPersonForm');
+
+            function updateFields() {
+                const selectedAction = document.querySelector('input[name="actionRadio"]:checked').value;
+                actionInput.value = selectedAction;
+                if (selectedAction === 'new') {
+                    newPersonFields.style.display = 'block';
+                    existingPersonFields.style.display = 'none';
+                    selectionError.style.display = 'none';
+                    newPersonFields.querySelector('input[name="name"]').setAttribute('required', 'required');
+                    existingPersonSelect.removeAttribute('required');
+                } else if (selectedAction === 'existing') {
+                    newPersonFields.style.display = 'none';
+                    existingPersonFields.style.display = 'block';
+                    selectionError.style.display = existingPersonSelect.value ? 'none' : 'block';
+                    newPersonFields.querySelector('input[name="name"]').removeAttribute('required');
+                    existingPersonSelect.setAttribute('required', 'required');
+                }
+            }
+
+            actionRadios.forEach(radio => {
+                radio.addEventListener('change', updateFields);
+            });
+
+            existingPersonSelect.addEventListener('change', function() {
+                selectionError.style.display = this.value ? 'none' : 'block';
+            });
+
+            form.addEventListener('submit', function(event) {
+                const selectedAction = actionInput.value;
+                if (selectedAction === 'existing' && !existingPersonSelect.value) {
+                    event.preventDefault();
+                    selectionError.style.display = 'block';
+                    return;
+                }
+                if (selectedAction === 'new' && !newPersonFields.querySelector('input[name="name"]').value) {
+                    event.preventDefault();
+                    selectionError.style.display = 'block';
+                    return;
+                }
+            });
+
+            // Trigger initial state
+            updateFields();
+        });
+    </script>
+</body>
+</html>

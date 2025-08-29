@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        header {
+            background-color: #343a40;
+            color: white;
+            padding: 1rem 2rem;
+            margin-bottom: 2rem;
+            border-radius: 0.5rem;
+        }
+        header h1 {
+            margin: 0;
+        }
+        .table-img {
+            width: 80px;
+            height: 80px;
+            object-fit: cover;
+            border-radius: 0.25rem;
+        }
+        .card {
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border-radius: 0.75rem;
+            height: 110vh;
+        }
+        .btn-group-vertical > .btn {
+            margin-bottom: 0.3rem;
+        }
+        th {
+            background-color: #e9ecef;
+        }
+        .table-responsive {
+            overflow-x: auto;
+        }
+        table {
+            min-width: 700px;
+        }
+        .recognized {
+            color: #28a745; /* Green for recognized faces */
+        }
+        .unknown {
+            color: #dc3545; /* Red for unknown faces */
+        }
+        .pagination {
+            justify-content: center;
+            margin-top: 1rem;
+        }
+        .pagination .page-link {
+            cursor: pointer;
+        }
+    </style>
+    <script src="https://kit.fontawesome.com/0a9399b7ee.js" crossorigin="anonymous"></script>
+</head>
+<body>
+    <header class="d-flex justify-content-between align-items-center">
+        <h1 class="text-center flex-grow-1">Face Recognition Admin Dashboard</h1>
+        <a href="{{ url_for('auth.logout') }}" class="btn btn-danger">Logout</a>
+    </header>
+
+    <div class="container">
+        <div class="d-flex justify-content-between mb-3">
+            <h2>Dashboard</h2>
+            <a href="{{ url_for('person.add_person_form') }}" class="btn btn-success">Add New Person</a>
+        </div>
+
+        <div class="row">
+            <!-- Recognized People Table -->
+            <div class="col-lg-6">
+                <div class="card p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h3 class="mb-0">Recognized People</h3>
+                        <button class="btn btn-primary btn-sm" onclick="exportTableToCSV('recognized-table', 'recognized_people.csv')">
+                            <i class="fa-solid fa-download"></i> Export to CSV
+                        </button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-bordered align-middle text-center" id="recognized-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Title</th>
+                                    <th>Date Added</th>
+                                    <th>Image</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recognized-table-body">
+                                {% for person in recognized_people %}
+                                <tr class="recognized-row">
+                                    <td>{{ person.id }}</td>
+                                    <td>{{ person.name }}</td>
+                                    <td>{{ person.title }}</td>
+                                    <td>{{ person.date_added.strftime('%Y-%m-%d %H:%M') }}</td>
+                                    <td>
+                                        {% set main_img = person.images | selectattr('is_main', 'equalto', True) | list | first %}
+                                        {% if main_img %}
+                                            <img src="{{ url_for('person.serve_person_image', image_id=main_img.id) }}" class="table-img" alt="Main Image">
+                                        {% elif person.images %}
+                                            <img src="{{ url_for('person.serve_person_image', image_id=person.images[0].id) }}" class="table-img" alt="First Image">
+                                        {% else %}
+                                            <span>No Image</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group-vertical">
+                                            <a href="{{ url_for('person.edit_person', id=person.id) }}" class="btn btn-primary btn-sm">
+                                                <i class="fa-solid fa-pen-to-square"></i> 
+                                            </a>
+                                            <a href="{{ url_for('person.delete_person', id=person.id) }}" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure?')">
+                                                <i class="fa-solid fa-trash"></i> 
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <nav aria-label="Recognized People Pagination">
+                        <ul class="pagination" id="recognized-pagination"></ul>
+                    </nav>
+                </div>
+            </div>
+
+            <!-- Captured Faces Table -->
+            <div class="col-lg-6">
+                <div class="card p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h3 class="mb-0">Captured Faces</h3>
+                        <button class="btn btn-primary btn-sm" onclick="exportTableToCSV('captured-table', 'captured_faces.csv')">
+                            <i class="fa-solid fa-download"></i> Export to CSV
+                        </button>
+                    </div>
+                    <!-- Filter Form -->
+                    <form method="GET" action="{{ url_for('main.index') }}" class="mb-3" id="filter-form">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <input type="date" class="form-control" id="capture_date" name="capture_date" value="{{ request.args.get('capture_date', '') }}">
+                            </div>
+                            <div class="col-md-6">
+                                <select class="form-select" name="person_filter" id="person_filter">
+                                    <option value="">-- Select a Person --</option>
+                                    <option value="unknown" {% if request.args.get('person_filter', '') == 'unknown' %}selected{% endif %}>Unknown</option>
+                                    {% for person in recognized_people %}
+                                    <option value="{{ person.id }}" {% if request.args.get('person_filter', '') == person.id|string %}selected{% endif %}>
+                                        {{ person.name }} (ID: {{ person.id }})
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </form>
+                    <div class="table-responsive">
+                        <table class="table table-bordered align-middle text-center" id="captured-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Capture Date</th>
+                                    <th>Image</th>
+                                    <th>Confidence</th>
+                                    <th>RP ID</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="captured-table-body">
+                                {% for face in captured_faces %}
+                                <tr class="captured-row">
+                                    <td>{{ face.id }}</td>
+                                    <td class="{% if face.recognized_person_id %}recognized{% else %}unknown{% endif %}">
+                                        {{ face.name }}
+                                    </td>
+                                    <td>{{ face.capture_date.strftime('%Y-%m-%d %H:%M') }}</td>
+                                    <td>
+                                        {% if face.image_data %}
+                                        <img src="{{ url_for('face.serve_image', id=face.id) }}" class="table-img" alt="Captured Face">
+                                        {% else %}
+                                        <span>No Image</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ face.confidence|round(2) }}</td>
+                                    <td>{{ face.recognized_person_id if face.recognized_person_id else 'N/A' }}</td>
+                                    <td>
+                                        <div class="btn-group-vertical">
+                                            {% if not face.recognized_person_id %}
+                                            <a href="{{ url_for('face.add_recognized_from_face', id=face.id) }}" class="btn btn-success btn-sm">
+                                                <i class="fa-solid fa-user-plus"></i> 
+                                            </a>
+                                            {% endif %}
+                                            <a href="{{ url_for('face.delete_face', id=face.id) }}" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure?')">
+                                                <i class="fa-solid fa-trash"></i> 
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <nav aria-label="Captured Faces Pagination">
+                        <ul class="pagination" id="captured-pagination"></ul>
+                    </nav>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Pagination settings
+        const rowsPerPage = 5;
+
+        // Function to escape CSV values
+        function escapeCSVValue(value) {
+            if (typeof value !== 'string') {
+                value = String(value);
+            }
+            if (value.includes('"') || value.includes(',') || value.includes('\n')) {
+                value = '"' + value.replace(/"/g, '""') + '"';
+            }
+            return value;
+        }
+
+        // Function to export table to CSV
+        function exportTableToCSV(tableId, filename) {
+            const table = document.getElementById(tableId);
+            const rows = table.querySelectorAll('tr');
+            const csv = [];
+
+            // Process headers, excluding Image and Actions
+            const headers = Array.from(rows[0].querySelectorAll('th'))
+                .map((th, index) => ({ text: th.textContent.trim(), index }))
+                .filter(header => header.text !== 'Image' && header.text !== 'Actions')
+                .map(header => escapeCSVValue(header.text));
+            csv.push(headers.join(','));
+
+            // Process rows, excluding Image and Actions columns
+            for (let i = 1; i < rows.length; i++) {
+                const cols = Array.from(rows[i].querySelectorAll('td'))
+                    .map((td, index) => ({ text: td.textContent.trim(), index }))
+                    .filter((_, index) => {
+                        const headerText = rows[0].querySelectorAll('th')[index].textContent.trim();
+                        return headerText !== 'Image' && headerText !== 'Actions';
+                    })
+                    .map(col => escapeCSVValue(col.text));
+                csv.push(cols.join(','));
+            }
+
+            // Create and download CSV
+            const csvContent = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv.join('\n'));
+            const link = document.createElement('a');
+            link.setAttribute('href', csvContent);
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // Function to setup pagination for a given table
+        function setupPagination(tableBodyId, paginationId, rowClass) {
+            const tableBody = document.getElementById(tableBodyId);
+            const pagination = document.getElementById(paginationId);
+            const rows = tableBody.getElementsByClassName(rowClass);
+            const totalRows = rows.length;
+            const totalPages = Math.ceil(totalRows / rowsPerPage);
+            let currentPageGroup = 1; // Track the current group of 3 pages
+
+            // Hide all rows initially
+            function showPage(page) {
+                const start = (page - 1) * rowsPerPage;
+                const end = start + rowsPerPage;
+
+                // Hide all rows
+                for (let i = 0; i < totalRows; i++) {
+                    rows[i].style.display = 'none';
+                }
+
+                // Show rows for the current page
+                for (let i = start; i < end && i < totalRows; i++) {
+                    rows[i].style.display = '';
+                }
+
+                // Calculate the current page group (1-3, 4-6, etc.)
+                const pageGroupSize = 3;
+                let startPage = Math.floor((page - 1) / pageGroupSize) * pageGroupSize + 1;
+                let endPage = Math.min(startPage + pageGroupSize - 1, totalPages);
+                currentPageGroup = Math.floor((page - 1) / pageGroupSize) + 1;
+
+                // Update pagination controls
+                pagination.innerHTML = '';
+
+                // Add Previous button
+                const prevLi = document.createElement('li');
+                prevLi.className = `page-item ${page === 1 ? 'disabled' : ''}`;
+                const prevA = document.createElement('a');
+                prevA.className = 'page-link';
+                prevA.href = '#';
+                prevA.innerHTML = '&laquo;';
+                prevA.setAttribute('aria-label', 'Previous');
+                prevA.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    if (page > 1) {
+                        // Move to the previous page group
+                        const newPage = Math.max(1, startPage - pageGroupSize);
+                        showPage(newPage);
+                    }
+                });
+                prevLi.appendChild(prevA);
+                pagination.appendChild(prevLi);
+
+                // Add page number buttons
+                for (let i = startPage; i <= endPage; i++) {
+                    const li = document.createElement('li');
+                    li.className = `page-item ${i === page ? 'active' : ''}`;
+                    const a = document.createElement('a');
+                    a.className = 'page-link';
+                    a.href = '#';
+                    a.textContent = i;
+                    a.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        showPage(i);
+                    });
+                    li.appendChild(a);
+                    pagination.appendChild(li);
+                }
+
+                // Add Next button
+                const nextLi = document.createElement('li');
+                nextLi.className = `page-item ${page === totalPages ? 'disabled' : ''}`;
+                const nextA = document.createElement('a');
+                nextA.className = 'page-link';
+                nextA.href = '#';
+                nextA.innerHTML = '&raquo;';
+                nextA.setAttribute('aria-label', 'Next');
+                nextA.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    if (page < totalPages) {
+                        // Move to the next page group
+                        const newPage = Math.min(totalPages, endPage + 1);
+                        showPage(newPage);
+                    }
+                });
+                nextLi.appendChild(nextA);
+                pagination.appendChild(nextLi);
+            }
+
+            // Show the first page initially
+            if (totalRows > 0) {
+                showPage(1);
+            }
+        }
+
+        // Initialize pagination for both tables and auto-submit filter form
+        document.addEventListener('DOMContentLoaded', () => {
+            setupPagination('recognized-table-body', 'recognized-pagination', 'recognized-row');
+            setupPagination('captured-table-body', 'captured-pagination', 'captured-row');
+
+            // Auto-submit form on input change
+            const filterForm = document.getElementById('filter-form');
+            const captureDateInput = document.getElementById('capture_date');
+            const personFilterSelect = document.getElementById('person_filter');
+
+            captureDateInput.addEventListener('change', () => {
+                filterForm.submit();
+            });
+
+            personFilterSelect.addEventListener('change', () => {
+                filterForm.submit();
+            });
+        });
+    </script>
+</body>
+</html>
