@@ -166,6 +166,3 @@ finally:
     cv2.destroyAllWindows()
     vs.stop()
     session.close()
-
-
-# i am testing with a real camera now  ( i used to test with webcam) can you make the camera screen bigger not small window
