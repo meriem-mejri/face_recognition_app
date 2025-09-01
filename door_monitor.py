@@ -12,14 +12,14 @@ from sqlalchemy.orm import sessionmaker
 from PIL import Image
 import io
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from app.models import RecognizedPerson, PersonImage, CapturedFace
 
 # === Config ===
-CAMERA_SOURCE = 0
-# 'rtsp://rtsp:sdi_cam_3109@172.20.95.212:554/media/video1'  # Default webcam or RTSP/HTTP URL
+CAMERA_SOURCE = 'rtsp://rtsp:sdi_cam_3109@172.20.95.212:554/media/video1'  # Default webcam or RTSP/HTTP URL
 MATCH_THRESHOLD = 0.45  # Face match threshold
 ENCODINGS_FILE = "encodings.pickle"
-DATABASE_URI = 'postgresql://face_recognition:stage2025@localhost/face_recognition_db'
+DATABASE_URI = 'postgresql://postgres:stage2025@localhost/frs_db'
 MIN_MOTION_AREA = 500  # Minimum area (pixels) to consider motion
 CAPTURE_DELAY = 2.0  # Seconds between captures during motion
 MOTION_THRESHOLD = 0.1  # Percentage of frame area for motion detection
@@ -85,7 +85,9 @@ try:
         encodings = face_recognition.face_encodings(rgb_frame, boxes)
         names = []
 
-        print(f"[DEBUG] Detected {len(boxes)} faces")
+        if len(boxes) > 0:
+            print(f"[DEBUG] Detected {len(boxes)} face{'s' if len(boxes) > 1 else ''}")
+
 
         for idx, (encoding, (top, right, bottom, left)) in enumerate(zip(encodings, boxes)):
             name = "Unknown"
@@ -129,7 +131,7 @@ try:
 
                     new_face = CapturedFace(
                         name=name,
-                        capture_date=datetime.utcnow(),
+                        capture_date=datetime.now(ZoneInfo("Africa/Tunis")),
                         image_data=image_data,
                         image_format='JPEG',
                         confidence=float(confidence),
