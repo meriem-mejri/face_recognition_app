@@ -20,9 +20,9 @@ CAMERA_SOURCE = 'rtsp://rtsp:sdi_cam_3109@172.20.95.212:554/media/video1'  # Def
 MATCH_THRESHOLD = 0.45  # Face match threshold
 ENCODINGS_FILE = "encodings.pickle"
 DATABASE_URI = 'postgresql://postgres:stage2025@localhost/frs_db'
-MIN_MOTION_AREA = 500  # Minimum area (pixels) to consider motion
+MIN_MOTION_AREA = 100  # Minimum area (pixels) to consider motion
 CAPTURE_DELAY = 2.0  # Seconds between captures during motion
-MOTION_THRESHOLD = 0.1  # Percentage of frame area for motion detection
+MOTION_THRESHOLD = 0.01  # Percentage of frame area for motion detection
 
 # === Database Setup ===
 engine = create_engine(DATABASE_URI)
